@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "mikasa-copy-building",
+	"version": "${version}",
+	"name": "Copy That Building",
+	"description": "Client-side region copy to JSON/NBT for your own servers. Author: Mikasa.",
+	"authors": [
+		"Mikasa"
+	],
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.mikasa.copybuilding.CopyBuildingClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
