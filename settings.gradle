@@ -1,0 +1,48 @@
+pluginManagement {
+	repositories {
+		maven {
+			name = 'AliyunGradlePlugin'
+			url = 'https://maven.aliyun.com/repository/gradle-plugin'
+		}
+		maven {
+			name = 'AliyunPublic'
+			url = 'https://maven.aliyun.com/repository/public'
+		}
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+	}
+}
+
+rootProject.name = 'Mikasa-copy-building'
+
+def aliyunPublic = uri('https://maven.aliyun.com/repository/public')
+
+def mirrorMavenCentral = { RepositoryHandler handler ->
+	handler.whenObjectAdded { repo ->
+		if (repo instanceof MavenArtifactRepository) {
+			def url = repo.url?.toString() ?: ''
+			if (url.contains('repo.maven.apache.org') || url.contains('repo1.maven.org')) {
+				logger.lifecycle("[maven-mirror] ${repo.name}: ${url} -> ${aliyunPublic}")
+				repo.setUrl(aliyunPublic)
+			}
+		}
+	}
+}
+
+gradle.beforeProject { project ->
+	mirrorMavenCentral(project.buildscript.repositories)
+	mirrorMavenCentral(project.repositories)
+}
+
+gradle.afterProject { project ->
+	project.repositories.configureEach { repo ->
+		if (repo instanceof MavenArtifactRepository) {
+			def url = repo.url?.toString() ?: ''
+			if (url.contains('repo.maven.apache.org') || url.contains('repo1.maven.org')) {
+				repo.setUrl(aliyunPublic)
+			}
+		}
+	}
+}
