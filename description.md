@@ -26,7 +26,7 @@ Designed for **your own** worlds and servers — for example when you need to re
 
 | | |
 |---|---|
-| Minecraft | **26.2** |
+| Minecraft | **26.3** |
 | Loader | Fabric **≥ 0.19.3** |
 | API | Fabric API |
 | Java | **25+** |

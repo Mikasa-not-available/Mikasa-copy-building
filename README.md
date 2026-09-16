@@ -9,9 +9,9 @@ Use it on **your own** worlds/servers when you need to rebuild the same structur
 | **Name** | Copy That Building |
 | **Mod id** | `mikasa-copy-building` |
 | **Author** | Mikasa |
-| **Version** | `fabric-26.2-2.6` |
-| **Jar** | `Mikasa-copy-building-fabric-26.2-2.6.jar` |
-| **Minecraft** | `26.2` |
+| **Version** | `fabric-26.3-2.6` |
+| **Jar** | `Mikasa-copy-building-fabric-26.3-2.6.jar` |
+| **Minecraft** | `26.3` |
 | **Fabric Loader** | **≥ 0.19.3** |
 | **Fabric API** | required (client commands / HUD) |
 | **Java** | **25+** |
@@ -39,9 +39,9 @@ The mod does **not**:
 
 ## Requirements
 
-- Minecraft **26.2**
+- Minecraft **26.3**
 - Fabric Loader **≥ 0.19.3**
-- Fabric API for 26.2 (project ships against `0.159.0+26.2`)
+- Fabric API for 26.3 (project ships against `0.160.5+26.3`)
 - Java **25+**
 
 Server install is **not** needed for this mod.
@@ -50,17 +50,17 @@ Server install is **not** needed for this mod.
 
 ## Install
 
-1. Install Fabric Loader **0.19.3+** for Minecraft **26.2** on the client.
+1. Install Fabric Loader **0.19.3+** for Minecraft **26.3** on the client.
 2. Put **Fabric API** and this jar into the client `mods` folder.
 3. Launch the game.
 
 Typical jar name:
 
 ```text
-Mikasa-copy-building-fabric-26.2-2.6.jar
+Mikasa-copy-building-fabric-26.3-2.6.jar
 ```
 
-Remove older `Mikasa-copy-building-fabric-26.2-*.jar` files so only one version is loaded.
+Remove older `Mikasa-copy-building-fabric-26.*-*.jar` files so only one version is loaded.
 
 ---
 
@@ -359,7 +359,7 @@ gradlew.bat build
 Output:
 
 ```text
-build/libs/Mikasa-copy-building-fabric-26.2-2.6.jar
+build/libs/Mikasa-copy-building-fabric-26.3-2.6.jar
 ```
 
 Versioning convention in this project: `fabric-<minecraft>-<mod>` with **+0.1** per change set (example: `2.5` → `2.6`).

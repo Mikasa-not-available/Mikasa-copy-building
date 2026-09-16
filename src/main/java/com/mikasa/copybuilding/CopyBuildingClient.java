@@ -20,13 +20,13 @@ import java.nio.file.Path;
 /**
  * Copy That Building - client-side region export.
  * Author: Mikasa
- * Version: fabric-26.2-2.6
+ * Version: fabric-26.3-2.6
  */
 public final class CopyBuildingClient implements ClientModInitializer {
 	public static final String AUTHOR = "Mikasa";
 	public static final String MOD_ID = "mikasa-copy-building";
 	public static final String MOD_NAME = "Copy That Building";
-	public static final String VERSION = "fabric-26.2-2.6";
+	public static final String VERSION = "fabric-26.3-2.6";
 	public static final String MOD_FOLDER = "Mikasa-copy-building";
 	public static final String LOG_PREFIX = "[CopyThatBuilding]";
 
