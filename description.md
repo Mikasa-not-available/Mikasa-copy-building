@@ -28,8 +28,8 @@ Designed for **your own** worlds and servers — for example when you need to re
 |---|---|
 | Minecraft | **26.3** |
 | Loader | Fabric **≥ 0.19.3** |
-| API | Fabric API |
-| Java | **25+** |
+| API | Fabric API **not required** |
+| Java | **25+** (JDK recommended for agent inject) |
 | Side | **Client only** |
 
 Server install is **not** required for this mod.

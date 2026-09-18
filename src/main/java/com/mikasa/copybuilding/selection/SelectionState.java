@@ -1,6 +1,8 @@
 package com.mikasa.copybuilding.selection;
 
+import com.mikasa.copybuilding.CopyBuildingClient;
 import com.mikasa.copybuilding.config.CopyBuildingConfig;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.phys.AABB;
@@ -55,11 +57,28 @@ public final class SelectionState {
 	}
 
 	public int yMin() {
-		return config.yMin();
+		int y = config.yMin();
+		if (!CopyBuildingClient.isAgentMode()) {
+			return y;
+		}
+		Minecraft mc = Minecraft.getInstance();
+		if (mc == null || mc.level == null) {
+			return y;
+		}
+		return Math.max(y, mc.level.getMinY());
 	}
 
 	public int yMax() {
-		return config.yMax();
+		int y = config.yMax();
+		if (!CopyBuildingClient.isAgentMode()) {
+			return y;
+		}
+		Minecraft mc = Minecraft.getInstance();
+		if (mc == null || mc.level == null) {
+			return y;
+		}
+		// getMaxY() is exclusive
+		return Math.min(y, mc.level.getMaxY() - 1);
 	}
 
 	public BlockPos origin() {

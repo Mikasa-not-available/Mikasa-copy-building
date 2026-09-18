@@ -37,7 +37,6 @@ loom {
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
 processResources {
@@ -59,8 +58,40 @@ java {
 	targetCompatibility = JavaVersion.VERSION_25
 }
 
+// Attacher uses jdk.attach — compile separately, keep out of the mod/agent jar.
+sourceSets {
+	main {
+		java {
+			exclude '**/attacher/**'
+		}
+	}
+}
+
 jar {
 	from("LICENSE") {
 		rename { "${it}_${project.base.archivesName.get()}" }
 	}
+	manifest {
+		attributes(
+				'Agent-Class': 'com.mikasa.copybuilding.CopyBuildingAgent',
+				'Premain-Class': 'com.mikasa.copybuilding.CopyBuildingAgent',
+				'Can-Redefine-Classes': 'true',
+				'Can-Retransform-Classes': 'true'
+		)
+	}
+}
+
+tasks.register('buildAttacher', JavaCompile) {
+	source = fileTree('src/main/java') {
+		include '**/attacher/**'
+	}
+	classpath = files()
+	destinationDirectory = layout.buildDirectory.dir('attacher-classes')
+	options.release = 25
+	options.encoding = 'UTF-8'
+	options.compilerArgs += ['--add-modules', 'jdk.attach']
+}
+
+tasks.named('build') {
+	dependsOn 'buildAttacher'
 }

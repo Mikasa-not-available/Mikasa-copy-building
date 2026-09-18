@@ -20,6 +20,9 @@ import java.util.Locale;
  */
 public final class CopyBuildingConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+	/** Absolute block Y span used as agent "world min/max" until clamped to the loaded dimension. */
+	public static final int AGENT_Y_MIN = -2032;
+	public static final int AGENT_Y_MAX = 2031;
 
 	public enum FilterMode {
 		EXCLUDE,
@@ -35,10 +38,12 @@ public final class CopyBuildingConfig {
 
 	private final Path file;
 	private final Data data;
+	private final boolean ephemeral;
 
-	private CopyBuildingConfig(Path file, Data data) {
+	private CopyBuildingConfig(Path file, Data data, boolean ephemeral) {
 		this.file = file;
 		this.data = data;
+		this.ephemeral = ephemeral;
 	}
 
 	public static CopyBuildingConfig load(Path modConfigDir) {
@@ -46,7 +51,7 @@ public final class CopyBuildingConfig {
 		try {
 			Files.createDirectories(modConfigDir);
 			if (!Files.isRegularFile(file)) {
-				CopyBuildingConfig created = new CopyBuildingConfig(file, Data.defaults());
+				CopyBuildingConfig created = new CopyBuildingConfig(file, Data.defaults(), false);
 				created.save();
 				return created;
 			}
@@ -56,15 +61,27 @@ public final class CopyBuildingConfig {
 					parsed = Data.defaults();
 				}
 				parsed.normalize();
-				return new CopyBuildingConfig(file, parsed);
+				return new CopyBuildingConfig(file, parsed, false);
 			}
 		} catch (Exception e) {
 			CopyBuildingClient.LOGGER.error("{} Failed to load config.json, using defaults", CopyBuildingClient.LOG_PREFIX, e);
-			return new CopyBuildingConfig(file, Data.defaults());
+			return new CopyBuildingConfig(file, Data.defaults(), false);
 		}
 	}
 
+	/** In-memory settings for agent inject — never reads or writes config.json. */
+	public static CopyBuildingConfig agentEphemeral() {
+		return new CopyBuildingConfig(null, Data.agentDefaults(), true);
+	}
+
+	public boolean isEphemeral() {
+		return ephemeral;
+	}
+
 	public void save() {
+		if (ephemeral || file == null) {
+			return;
+		}
 		try {
 			Files.createDirectories(file.getParent());
 			try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
@@ -180,6 +197,15 @@ public final class CopyBuildingConfig {
 		data.lastFormat = (format == null ? ExportFormat.JSON : format).name();
 	}
 
+	/** Agent-only: custom export folder. Empty = default config/Mikasa-copy-building/exports. */
+	public String agentExportPath() {
+		return data.agentExportPath == null ? "" : data.agentExportPath.trim();
+	}
+
+	public void setAgentExportPath(String path) {
+		data.agentExportPath = path == null ? "" : path.trim();
+	}
+
 	public static final class Data {
 		public int yMin = -64;
 		public int yMax = 320;
@@ -193,9 +219,29 @@ public final class CopyBuildingConfig {
 		public List<String> blockFilters = new ArrayList<>();
 		/** Stored as string so old values like SCHEMA migrate cleanly. */
 		public String lastFormat = "JSON";
+		/** Absolute/relative folder for agent-mode exports; blank = default. */
+		public String agentExportPath = "";
 
 		public static Data defaults() {
 			return new Data();
+		}
+
+		/** Agent inject defaults: full Y span, RAM storage, NBT export. */
+		public static Data agentDefaults() {
+			Data d = new Data();
+			d.yMin = AGENT_Y_MIN;
+			d.yMax = AGENT_Y_MAX;
+			d.storageMode = StorageMode.RAM;
+			d.lastFormat = ExportFormat.NBT.name();
+			d.excludeAir = true;
+			d.excludeGrass = false;
+			d.excludeFlowers = false;
+			d.excludeDirt = false;
+			d.excludeWater = false;
+			d.filterMode = FilterMode.EXCLUDE;
+			d.blockFilters = new ArrayList<>();
+			d.agentExportPath = "";
+			return d;
 		}
 
 		public void normalize() {
@@ -207,6 +253,9 @@ public final class CopyBuildingConfig {
 			}
 			if (storageMode == null) {
 				storageMode = StorageMode.RAM;
+			}
+			if (agentExportPath == null) {
+				agentExportPath = "";
 			}
 			ExportFormat fmt = ExportFormat.fromToken(lastFormat);
 			lastFormat = (fmt == null ? ExportFormat.JSON : fmt).name();

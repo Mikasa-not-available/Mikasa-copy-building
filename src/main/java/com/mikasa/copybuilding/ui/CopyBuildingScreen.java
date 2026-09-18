@@ -1,5 +1,6 @@
 package com.mikasa.copybuilding.ui;
 
+import com.mikasa.copybuilding.CopyBuildingActions;
 import com.mikasa.copybuilding.CopyBuildingClient;
 import com.mikasa.copybuilding.config.CopyBuildingConfig;
 import com.mikasa.copybuilding.export.ExportFormat;
@@ -33,6 +34,7 @@ public final class CopyBuildingScreen extends Screen {
 	private EditBox yMinBox;
 	private EditBox yMaxBox;
 	private EditBox filtersBox;
+	private EditBox exportPathBox;
 	private Checkbox excludeAirBox;
 	private Checkbox excludeGrassBox;
 	private Checkbox excludeFlowersBox;
@@ -42,11 +44,14 @@ public final class CopyBuildingScreen extends Screen {
 	private CycleButton<CopyBuildingConfig.StorageMode> storageModeButton;
 	private CycleButton<ExportFormat> formatButton;
 	private Button updateButton;
+	private Button setAButton;
+	private Button setBButton;
 	private Button saveButton;
 	private Button stopButton;
 	private Button closeButton;
 	private StringWidget pointALabel;
 	private StringWidget pointBLabel;
+	private StringWidget playerPosLabel;
 
 	private final List<AbstractWidget> scrollWidgets = new ArrayList<>();
 	private final List<Integer> scrollBaseY = new ArrayList<>();
@@ -96,6 +101,16 @@ public final class CopyBuildingScreen extends Screen {
 				.build();
 		addScrollable(updateButton, 48);
 
+		setAButton = Button.builder(Component.literal("Set A @ player"), b -> onSetA())
+				.bounds(190, 72, 100, 20)
+				.build();
+		addScrollable(setAButton, 72);
+
+		setBButton = Button.builder(Component.literal("Set B @ player"), b -> onSetB())
+				.bounds(190, 96, 100, 20)
+				.build();
+		addScrollable(setBButton, 96);
+
 		int pointWidth = Math.max(140, contentRight - 270);
 		pointALabel = new StringWidget(270, 40, pointWidth, 12, Component.literal(pointLine(true)), this.font);
 		addScrollable(pointALabel, 40);
@@ -103,7 +118,14 @@ public final class CopyBuildingScreen extends Screen {
 		pointBLabel = new StringWidget(270, 68, pointWidth, 12, Component.literal(pointLine(false)), this.font);
 		addScrollable(pointBLabel, 68);
 
-		int checkY = 96;
+		int checkY = 124;
+		if (CopyBuildingClient.isAgentMode()) {
+			playerPosLabel = new StringWidget(20, 120, Math.max(200, contentRight - 20), 12,
+					Component.literal(playerPosLine()), this.font);
+			addScrollable(playerPosLabel, 120);
+			checkY = 144;
+		}
+
 		excludeAirBox = Checkbox.builder(Component.literal("Exclude air"), this.font)
 				.pos(20, checkY).selected(cfg.excludeAir()).build();
 		addScrollable(excludeAirBox, checkY);
@@ -116,7 +138,7 @@ public final class CopyBuildingScreen extends Screen {
 				.pos(300, checkY).selected(cfg.excludeFlowers()).build();
 		addScrollable(excludeFlowersBox, checkY);
 
-		checkY = 120;
+		checkY += 24;
 		excludeDirtBox = Checkbox.builder(Component.literal("Exclude dirt"), this.font)
 				.pos(20, checkY).selected(cfg.excludeDirt()).build();
 		addScrollable(excludeDirtBox, checkY);
@@ -125,32 +147,50 @@ public final class CopyBuildingScreen extends Screen {
 				.pos(150, checkY).selected(cfg.excludeWater()).build();
 		addScrollable(excludeWaterBox, checkY);
 
+		checkY += 24;
 		storageModeButton = CycleButton.<CopyBuildingConfig.StorageMode>builder(
 						mode -> Component.literal(mode == CopyBuildingConfig.StorageMode.RAM ? "Storage: RAM" : "Storage: FILE"),
 						cfg.storageMode()
 				)
 				.withValues(CopyBuildingConfig.StorageMode.RAM, CopyBuildingConfig.StorageMode.FILE)
-				.create(20, 144, 220, 20, Component.literal("Storage"), (btn, value) -> {
+				.create(20, checkY, 220, 20, Component.literal("Storage"), (btn, value) -> {
 				});
-		addScrollable(storageModeButton, 144);
+		addScrollable(storageModeButton, checkY);
 
+		checkY += 28;
 		filterModeButton = CycleButton.<CopyBuildingConfig.FilterMode>builder(
 						mode -> Component.literal(mode == CopyBuildingConfig.FilterMode.INCLUDE ? "Include list" : "Exclude list"),
 						cfg.filterMode()
 				)
 				.withValues(CopyBuildingConfig.FilterMode.EXCLUDE, CopyBuildingConfig.FilterMode.INCLUDE)
-				.create(20, 172, 220, 20, Component.literal("Filter mode"), (btn, value) -> {
+				.create(20, checkY, 220, 20, Component.literal("Filter mode"), (btn, value) -> {
 				});
-		addScrollable(filterModeButton, 172);
+		addScrollable(filterModeButton, checkY);
 
-		addScrollable(new StringWidget(20, 200, 300, 12, Component.literal("Block ids (comma-separated)"), this.font), 200);
+		checkY += 28;
+		addScrollable(new StringWidget(20, checkY, 300, 12, Component.literal("Block ids (comma-separated)"), this.font), checkY);
+		checkY += 16;
 		int filterWidth = Math.min(400, contentRight - 20);
-		filtersBox = new EditBox(this.font, 20, 216, Math.max(120, filterWidth), 20, Component.literal("Filters"));
+		filtersBox = new EditBox(this.font, 20, checkY, Math.max(120, filterWidth), 20, Component.literal("Filters"));
 		filtersBox.setValue(cfg.blockFiltersCsv());
 		filtersBox.setMaxLength(512);
-		addScrollable(filtersBox, 216);
+		addScrollable(filtersBox, checkY);
 
-		contentHeight = 252;
+		int nextY = checkY + 32;
+		if (CopyBuildingClient.isAgentMode()) {
+			addScrollable(new StringWidget(20, nextY, 360, 12,
+					Component.literal("Export folder (agent)"), this.font), nextY);
+			nextY += 16;
+			exportPathBox = new EditBox(this.font, 20, nextY, Math.max(120, filterWidth), 20,
+					Component.literal("Export folder"));
+			String path = cfg.agentExportPath();
+			exportPathBox.setValue(path.isEmpty() ? CopyBuildingClient.exportsDir().toString() : path);
+			exportPathBox.setMaxLength(512);
+			addScrollable(exportPathBox, nextY);
+			nextY += 28;
+		}
+
+		contentHeight = nextY + 8;
 		applyScroll();
 
 		int footerY = this.height - 28;
@@ -187,6 +227,27 @@ public final class CopyBuildingScreen extends Screen {
 		return "Point B: " + (s.pointB() == null ? "unset" : s.pointB().toShortString());
 	}
 
+	private String playerPosLine() {
+		if (this.minecraft == null || this.minecraft.player == null) {
+			return "Pos: — (not in world)";
+		}
+		var p = this.minecraft.player;
+		String base = String.format("Pos: %.1f, %.1f, %.1f  yaw %d°  (block %d, %d, %d)",
+				p.getX(), p.getY(), p.getZ(),
+				Math.round(Mth.wrapDegrees(p.getYRot())),
+				p.getBlockX(), p.getBlockY(), p.getBlockZ());
+		if (!CopyBuildingClient.isAgentMode() || this.minecraft.level == null) {
+			return base;
+		}
+		ChunkScanJob.UnloadedChunkHint hint = CopyBuildingClient.scanJob()
+				.nearestUnloadedChunkHint(this.minecraft.level, p.position());
+		if (hint == null) {
+			return base;
+		}
+		return base + String.format("  |  next %d,%d (%.0fm)",
+				hint.chunkX(), hint.chunkZ(), hint.distance());
+	}
+
 	private void refreshPointLabels() {
 		int contentRight = scrollbarLeft() - 8;
 		if (pointALabel != null) {
@@ -202,6 +263,11 @@ public final class CopyBuildingScreen extends Screen {
 			int w = Math.min(this.font.width(line) + 4, Math.max(80, contentRight - 270));
 			pointBLabel.setWidth(w);
 			pointBLabel.setX(Math.max(270, contentRight - w));
+		}
+		if (playerPosLabel != null) {
+			String line = playerPosLine();
+			playerPosLabel.setMessage(Component.literal(line));
+			playerPosLabel.setWidth(Math.max(200, contentRight - 20));
 		}
 	}
 
@@ -308,6 +374,24 @@ public final class CopyBuildingScreen extends Screen {
 		return super.mouseReleased(event);
 	}
 
+	private void onSetA() {
+		try {
+			message(CopyBuildingActions.setPointA());
+			refreshPointLabels();
+		} catch (Throwable t) {
+			message("Set A failed: " + t.getMessage());
+		}
+	}
+
+	private void onSetB() {
+		try {
+			message(CopyBuildingActions.setPointB());
+			refreshPointLabels();
+		} catch (Throwable t) {
+			message("Set B failed: " + t.getMessage());
+		}
+	}
+
 	private void onUpdate() {
 		applyFormToConfig();
 		SelectionState selection = CopyBuildingClient.selection();
@@ -374,6 +458,9 @@ public final class CopyBuildingScreen extends Screen {
 		cfg.setFilterMode(filterModeButton.getValue());
 		cfg.setBlockFiltersFromCsv(filtersBox.getValue());
 		cfg.setLastFormat(formatButton.getValue());
+		if (CopyBuildingClient.isAgentMode() && exportPathBox != null) {
+			cfg.setAgentExportPath(exportPathBox.getValue());
+		}
 		cfg.save();
 	}
 

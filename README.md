@@ -9,11 +9,11 @@ Use it on **your own** worlds/servers when you need to rebuild the same structur
 | **Name** | Copy That Building |
 | **Mod id** | `mikasa-copy-building` |
 | **Author** | Mikasa |
-| **Version** | `fabric-26.3-2.6` |
-| **Jar** | `Mikasa-copy-building-fabric-26.3-2.6.jar` |
+| **Version** | `fabric-26.3-2.10` |
+| **Jar** | `Mikasa-copy-building-fabric-26.3-2.10.jar` |
 | **Minecraft** | `26.3` |
 | **Fabric Loader** | **≥ 0.19.3** |
-| **Fabric API** | required (client commands / HUD) |
+| **Fabric API** | **not required** |
 | **Java** | **25+** |
 | **Side** | **Client only** |
 | **License** | MIT |
@@ -41,8 +41,8 @@ The mod does **not**:
 
 - Minecraft **26.3**
 - Fabric Loader **≥ 0.19.3**
-- Fabric API for 26.3 (project ships against `0.160.5+26.3`)
 - Java **25+**
+- Fabric API is **not** required
 
 Server install is **not** needed for this mod.
 
@@ -51,16 +51,44 @@ Server install is **not** needed for this mod.
 ## Install
 
 1. Install Fabric Loader **0.19.3+** for Minecraft **26.3** on the client.
-2. Put **Fabric API** and this jar into the client `mods` folder.
+2. Put this jar into the client `mods` folder.
 3. Launch the game.
 
 Typical jar name:
 
 ```text
-Mikasa-copy-building-fabric-26.3-2.6.jar
+Mikasa-copy-building-fabric-26.3-2.10.jar
 ```
 
 Remove older `Mikasa-copy-building-fabric-26.*-*.jar` files so only one version is loaded.
+
+### Agent inject (Fabric already running)
+
+Lab / PoC notes (Attach API, Knot parent class loader, compass UI): **[README-AGENT-POC.md](README-AGENT-POC.md)**.
+
+Use this when Fabric is **already** running and you do **not** want the jar in `mods/` (or want a hot attach). Requires JDK with Attach API.
+
+1. Start Minecraft with **Fabric** (`KnotClient`). Do **not** also load this mod from `mods/` at the same time.
+2. From the project root:
+
+```bat
+python inject.py
+```
+
+Optional flags: `--no-build`, `--pid <pid>`, `--jar path\to.jar`.
+
+If the agent jar and Attacher are **already built**, use the no-Gradle script:
+
+```bat
+python inject_ready.py
+python inject_ready.py path\to\attacher-classes path\to\mod.jar
+```
+
+Without paths, both are searched in the **current working directory**.
+3. Agent starts with menu **hidden**. Toggle with **Ctrl+M+I** (hold Ctrl, press M, then I — Mi = Mikasa).
+4. In the menu you can set a custom **Export folder** (agent mode only); blank/default uses `config/Mikasa-copy-building/exports`.
+5. Agent mode has **no** slash-command intercept (late attach). For slash/HUD, use the normal `mods/` install.
+6. Agent UI includes a **compass** toward the next chunk that still needs loading, plus a mini chunk map and scan progress.
 
 ---
 
@@ -359,10 +387,10 @@ gradlew.bat build
 Output:
 
 ```text
-build/libs/Mikasa-copy-building-fabric-26.3-2.6.jar
+build/libs/Mikasa-copy-building-fabric-26.3-2.9.jar
 ```
 
-Versioning convention in this project: `fabric-<minecraft>-<mod>` with **+0.1** per change set (example: `2.5` → `2.6`).
+Versioning convention in this project: `fabric-<minecraft>-<mod>` with **+0.1** per change set (example: `2.8` → `2.9`).
 
 ---
 

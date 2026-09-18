@@ -18,6 +18,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -88,6 +89,13 @@ public final class ChunkScanJob {
 	private volatile boolean saving;
 	private final AtomicInteger savePercent = new AtomicInteger();
 	private volatile long cachedLiveFileBytes = -1L;
+
+	/** Active in-worker chunk sample progress (for agent UI). */
+	private volatile boolean activeScan;
+	private volatile int activeCx;
+	private volatile int activeCz;
+	private final AtomicInteger activeSampled = new AtomicInteger();
+	private final AtomicInteger activeTotal = new AtomicInteger();
 
 	private static ThreadFactory daemonFactory() {
 		return r -> {
@@ -202,6 +210,263 @@ public final class ChunkScanJob {
 		}
 	}
 
+	public record ActiveChunkProgress(int chunkX, int chunkZ, int percent) {
+	}
+
+	/**
+	 * Snapshot for inject UI (compass / chunk map / progress lists).
+	 * Call from the game thread.
+	 */
+	public record AgentHudSnapshot(
+			boolean tracking,
+			boolean scanning,
+			boolean saving,
+			int overallPercent,
+			String progressLabel,
+			String sizeLabel,
+			String pointsLine,
+			String posLine,
+			float yawDeg,
+			Float relativeBearingDeg,
+			String nextLine,
+			List<ActiveChunkProgress> scanningNow,
+			List<String> waitingLines,
+			int mapRadius,
+			int playerChunkX,
+			int playerChunkZ,
+			byte[] mapCells
+	) {
+		/** Map cell codes for {@link #mapCells}. */
+		public static final byte CELL_EMPTY = 0;
+		public static final byte CELL_UNLOADED = 1;
+		public static final byte CELL_LOADED = 2;
+		public static final byte CELL_DONE = 3;
+		public static final byte CELL_PLAYER = 4;
+		public static final byte CELL_NEXT = 5;
+		public static final byte CELL_A = 6;
+		public static final byte CELL_B = 7;
+	}
+
+	/**
+	 * Builds HUD data for the agent window. Must run on the client thread.
+	 */
+	public AgentHudSnapshot buildAgentHudSnapshot(Minecraft mc, int mapRadius, SelectionState selection) {
+		int radius = Math.max(2, Math.min(16, mapRadius));
+		LocalPlayer player = mc == null ? null : mc.player;
+		ClientLevel level = mc == null ? null : mc.level;
+
+		String pointsLine;
+		if (selection == null) {
+			pointsLine = "A=unset   B=unset";
+		} else {
+			String a = selection.pointA() == null ? "unset" : formatBlock(selection.pointA());
+			String b = selection.pointB() == null ? "unset" : formatBlock(selection.pointB());
+			pointsLine = "A=" + a + "   B=" + b + "   Y=" + selection.yMin() + ".." + selection.yMax();
+		}
+
+		String posLine;
+		float yawDeg = 0f;
+		int playerCx = 0;
+		int playerCz = 0;
+		if (player != null) {
+			yawDeg = player.getYRot();
+			playerCx = player.getBlockX() >> 4;
+			playerCz = player.getBlockZ() >> 4;
+			posLine = String.format(Locale.ROOT,
+					"Pos: %.1f, %.1f, %.1f   yaw %d°   (block %d, %d, %d)",
+					player.getX(), player.getY(), player.getZ(),
+					Math.round(Mth.wrapDegrees(yawDeg)),
+					player.getBlockX(), player.getBlockY(), player.getBlockZ());
+		} else {
+			posLine = "Pos: — (not in world)";
+		}
+
+		UnloadedChunkHint hint = (level != null && player != null)
+				? nearestUnloadedChunkHint(level, player.position())
+				: null;
+		Float relativeBearing = null;
+		String nextLine = "Next: —";
+		if (hint != null && player != null) {
+			double dx = hint.x() - player.getX();
+			double dz = hint.z() - player.getZ();
+			double targetYaw = Math.toDegrees(Math.atan2(-dx, dz));
+			relativeBearing = Mth.wrapDegrees((float) targetYaw - yawDeg);
+			nextLine = String.format(Locale.ROOT, "Next: %d, %d   Dist: %.0fm",
+					hint.chunkX(), hint.chunkZ(), hint.distance());
+		} else if (tracking && scanning && !saving && completedChunks.get() < maxChunks) {
+			nextLine = "Next: all remaining chunks loaded — scanning…";
+		} else if (tracking && !scanning && !saving) {
+			nextLine = "Next: — (scan idle / complete)";
+		}
+
+		List<ActiveChunkProgress> scanningNow = List.of();
+		if (activeScan) {
+			int total = Math.max(1, activeTotal.get());
+			int pct = (int) Math.min(100L, (activeSampled.get() * 100L) / total);
+			scanningNow = List.of(new ActiveChunkProgress(activeCx, activeCz, pct));
+		}
+
+		List<String> waitingLines = new ArrayList<>();
+		List<long[]> queue;
+		boolean[] done;
+		int max;
+		int selMinX;
+		int selMaxX;
+		int selMinZ;
+		int selMaxZ;
+		synchronized (stateLock) {
+			queue = chunkQueue;
+			done = chunkDone;
+			max = maxChunks;
+			selMinX = minX;
+			selMaxX = maxX;
+			selMinZ = minZ;
+			selMaxZ = maxZ;
+		}
+		if (tracking && level != null && max > 0 && done.length == max) {
+			int listed = 0;
+			for (int i = 0; i < max && listed < 24; i++) {
+				if (done[i]) {
+					continue;
+				}
+				long[] pos = queue.get(i);
+				int cx = (int) pos[0];
+				int cz = (int) pos[1];
+				if (activeScan && cx == activeCx && cz == activeCz) {
+					continue;
+				}
+				if (isChunkFullyLoaded(level, cx, cz)) {
+					waitingLines.add(String.format(Locale.ROOT, "%d, %d  (loaded, queued)", cx, cz));
+				} else {
+					waitingLines.add(String.format(Locale.ROOT, "%d, %d  (need load)", cx, cz));
+				}
+				listed++;
+			}
+			int remaining = 0;
+			for (int i = 0; i < max; i++) {
+				if (!done[i]) {
+					remaining++;
+				}
+			}
+			if (remaining > listed) {
+				waitingLines.add("… +" + (remaining - listed) + " more");
+			}
+		}
+		if (waitingLines.isEmpty()) {
+			waitingLines = List.of(tracking ? "(none)" : "(not tracking)");
+		}
+
+		int side = radius * 2 + 1;
+		byte[] cells = new byte[side * side];
+		Integer aCx = selection != null && selection.pointA() != null ? selection.pointA().getX() >> 4 : null;
+		Integer aCz = selection != null && selection.pointA() != null ? selection.pointA().getZ() >> 4 : null;
+		Integer bCx = selection != null && selection.pointB() != null ? selection.pointB().getX() >> 4 : null;
+		Integer bCz = selection != null && selection.pointB() != null ? selection.pointB().getZ() >> 4 : null;
+
+		Set<Long> doneKeys = new HashSet<>();
+		Set<Long> needKeys = new HashSet<>();
+		if (tracking && max > 0 && done.length == max) {
+			for (int i = 0; i < max; i++) {
+				long[] pos = queue.get(i);
+				long key = chunkKey((int) pos[0], (int) pos[1]);
+				if (done[i]) {
+					doneKeys.add(key);
+				} else {
+					needKeys.add(key);
+				}
+			}
+		}
+
+		for (int dz = -radius; dz <= radius; dz++) {
+			for (int dx = -radius; dx <= radius; dx++) {
+				int cx = playerCx + dx;
+				int cz = playerCz + dz;
+				int idx = (dz + radius) * side + (dx + radius);
+				long key = chunkKey(cx, cz);
+				boolean inSel = tracking && chunkOverlapsSelection(cx, cz, selMinX, selMaxX, selMinZ, selMaxZ);
+				byte cell = AgentHudSnapshot.CELL_EMPTY;
+				if (level != null && isChunkFullyLoaded(level, cx, cz)) {
+					if (doneKeys.contains(key)) {
+						cell = AgentHudSnapshot.CELL_DONE;
+					} else if (needKeys.contains(key) || inSel) {
+						cell = AgentHudSnapshot.CELL_LOADED;
+					} else {
+						cell = AgentHudSnapshot.CELL_LOADED;
+					}
+				} else if (needKeys.contains(key)) {
+					cell = AgentHudSnapshot.CELL_UNLOADED;
+				} else if (inSel) {
+					cell = AgentHudSnapshot.CELL_UNLOADED;
+				}
+				cells[idx] = cell;
+			}
+		}
+
+		// overlays (priority: A/B, next, player)
+		if (aCx != null && aCz != null) {
+			putOverlay(cells, side, radius, playerCx, playerCz, aCx, aCz, AgentHudSnapshot.CELL_A);
+		}
+		if (bCx != null && bCz != null) {
+			putOverlay(cells, side, radius, playerCx, playerCz, bCx, bCz, AgentHudSnapshot.CELL_B);
+		}
+		if (hint != null) {
+			putOverlay(cells, side, radius, playerCx, playerCz, hint.chunkX(), hint.chunkZ(), AgentHudSnapshot.CELL_NEXT);
+		}
+		if (player != null) {
+			putOverlay(cells, side, radius, playerCx, playerCz, playerCx, playerCz, AgentHudSnapshot.CELL_PLAYER);
+		}
+
+		return new AgentHudSnapshot(
+				tracking,
+				scanning,
+				saving,
+				hudPercent(),
+				progressLabel(),
+				sizeLabel(),
+				pointsLine,
+				posLine,
+				yawDeg,
+				relativeBearing,
+				nextLine,
+				scanningNow,
+				waitingLines,
+				radius,
+				playerCx,
+				playerCz,
+				cells
+		);
+	}
+
+	private static void putOverlay(
+			byte[] cells,
+			int side,
+			int radius,
+			int playerCx,
+			int playerCz,
+			int cx,
+			int cz,
+			byte code
+	) {
+		int dx = cx - playerCx;
+		int dz = cz - playerCz;
+		if (Math.abs(dx) > radius || Math.abs(dz) > radius) {
+			return;
+		}
+		cells[(dz + radius) * side + (dx + radius)] = code;
+	}
+
+	private static boolean chunkOverlapsSelection(int cx, int cz, int minX, int maxX, int minZ, int maxZ) {
+		int cMinX = cx << 4;
+		int cMaxX = cMinX + 15;
+		int cMinZ = cz << 4;
+		int cMaxZ = cMinZ + 15;
+		return cMaxX >= minX && cMinX <= maxX && cMaxZ >= minZ && cMinZ <= maxZ;
+	}
+
+	private static String formatBlock(BlockPos pos) {
+		return pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
+	}
+
 	/** RAM used / live file / estimated Save size for current format. */
 	public String sizeLabel() {
 		RegionCapture cap;
@@ -274,6 +539,7 @@ public final class ChunkScanJob {
 			liveJsonPath = null;
 			sessionExportName = null;
 			cachedLiveFileBytes = -1L;
+			clearActiveScan();
 		}
 		if (toDelete != null) {
 			worker.execute(() -> {
@@ -664,6 +930,16 @@ public final class ChunkScanJob {
 			int worldMinZ = Math.max(bMinZ, cz << 4);
 			int worldMaxZ = Math.min(bMaxZ, (cz << 4) + 15);
 
+			int spanX = Math.max(0, worldMaxX - worldMinX + 1);
+			int spanZ = Math.max(0, worldMaxZ - worldMinZ + 1);
+			int spanY = Math.max(0, bYMax - bYMin + 1);
+			int totalBlocks = Math.max(1, spanX * spanZ * spanY);
+			activeCx = cx;
+			activeCz = cz;
+			activeTotal.set(totalBlocks);
+			activeSampled.set(0);
+			activeScan = true;
+
 			BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 			int sampled = 0;
 			for (int x = worldMinX; x <= worldMaxX; x++) {
@@ -678,12 +954,17 @@ public final class ChunkScanJob {
 							target.addBlock(x - bMinX, y - bYMin, z - bMinZ, state);
 						}
 						sampled++;
+						if (sampled % 512 == 0) {
+							activeSampled.set(sampled);
+						}
 						if (sampled % YIELD_EVERY_BLOCKS == 0) {
+							activeSampled.set(sampled);
 							Thread.yield();
 						}
 					}
 				}
 			}
+			activeSampled.set(sampled);
 
 			if (sid != sessionId.get() || cancelRequested) {
 				return;
@@ -707,8 +988,15 @@ public final class ChunkScanJob {
 		} catch (Exception e) {
 			CopyBuildingClient.LOGGER.error("{} Background scan failed for chunk {},{}", CopyBuildingClient.LOG_PREFIX, cx, cz, e);
 		} finally {
+			clearActiveScan();
 			workerBusy.set(false);
 		}
+	}
+
+	private void clearActiveScan() {
+		activeScan = false;
+		activeSampled.set(0);
+		activeTotal.set(0);
 	}
 
 	private void prepareLiveFile() {

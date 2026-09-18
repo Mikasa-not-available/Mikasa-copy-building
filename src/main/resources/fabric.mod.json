@@ -14,10 +14,12 @@
 			"com.mikasa.copybuilding.CopyBuildingClient"
 		]
 	},
+	"mixins": [
+		"mikasa-copy-building.mixins.json"
+	],
 	"depends": {
 		"fabricloader": ">=0.19.3",
 		"minecraft": "~26.3",
-		"java": ">=25",
-		"fabric-api": "*"
+		"java": ">=25"
 	}
 }
